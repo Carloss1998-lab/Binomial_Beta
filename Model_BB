@@ -1,0 +1,105 @@
+phi <- 2
+beta0 <- 1
+beta <- c(-.5, .5, 1.5, -1.2, -.8)
+
+vecN <- EFFECTIF_COM # vecteur des ni
+
+set.seed(1653); matX <- matrix(rnorm(5*length(vecN), mean = c(2, 2, 3, 3, 2)), ncol = 5, byrow = TRUE)
+
+vecMu <- 1 / (1 + exp(-beta0 - matX %*% beta))
+
+set.seed(1655) ; vecY <- rbinom(n = length(vecN), 
+               size = vecN,
+               prob = rbeta(n = length(vecN), 
+                            shape1 = phi * vecMu,
+                            shape2 = phi * ( 1 - vecMu) )
+               )
+
+
+vrais <- function(theta, matExo, vecSize, vecOutput){
+  
+  valVrais <- 0
+  sizeparam <- length(theta)
+  vecmean <- 1 / (1 + exp(-theta[1] - matExo %*% theta[2:(sizeparam-1)]))
+  for (needle in 1:length(vecSize)) {
+  if(needle < 10){
+    print(beta(vecOutput[needle] + theta[sizeparam] * vecmean[needle], vecSize[needle] + theta[sizeparam] * (1-vecmean[needle]) - vecOutput[needle]))
+    print(beta(theta[sizeparam] * vecmean[needle], theta[sizeparam] * (1-vecmean[needle])))
+  }
+    valVrais <- valVrais + log(beta(vecOutput[needle] + theta[sizeparam] * vecmean[needle], vecSize[needle] + theta[sizeparam] * (1-vecmean[needle]) - vecOutput[needle])/
+                                 beta(theta[sizeparam] * vecmean[needle], theta[sizeparam] * (1-vecmean[needle])))
+  }
+  return(-valVrais)
+}
+
+
+vrais2 <- function(theta, matExo, vecSize, vecOutput){
+  valVrais <- 0
+  sizeparam <- length(theta)
+  vecmu <<- 1 / (1 + exp(-theta[1] - matExo %*% theta[2:(sizeparam-1)]))
+  vecvar <- vecSize * vecmu * ( 1 - vecmu) * (theta[sizeparam] + vecSize)/(theta[sizeparam]  + 1)
+  for (needle in 1:length(vecSize)) {
+    valVrais <- valVrais +  ((vecOutput[needle] - vecSize[needle] * vecmu[needle])^2)/(vecvar[needle]) + log(vecvar[needle], base = exp(1))
+  }
+  return(valVrais)
+}
+
+vrais3 <-  function(theta, matExo, vecSize, vecOutput){
+  
+  valVrais <- 0
+  sizeparam <- length(theta)
+  vecmu <<- 1 / (1 + exp(-theta[1] - matExo %*% theta[2:(sizeparam-1)]))
+  vecm2 <- vecSize * vecmu * ( vecSize * ( 1 +  vecmu * theta[sizeparam]) + theta[sizeparam] * (1 -vecmu)) /(theta[sizeparam]  + 1)
+  for (needle in 1:length(vecSize)) {
+    valVrais <- valVrais +  (vecOutput[needle] - vecSize[needle] * vecmu[needle])^2  + (vecOutput[needle]^2 - vecm2[needle])^2
+  }
+  return(valVrais) 
+}
+
+
+thetaint <- c(rnorm(ncol(matX)+1), rexp(1))
+
+vrais2(theta = thetaint, matExo = matX, vecSize = vecN, vecOutput = vecY)
+
+vrais3(theta = thetaint, matExo = matX, vecSize = vecN, vecOutput = vecY)
+
+res2 <- optim(thetaint, vrais2, lower = c(rep(-Inf, ncol(matX) + 1), 0), upper = c(rep(Inf, ncol(matX) + 2)), method = "L-BFGS-B",
+             matExo = matX, vecSize = vecN, vecOutput = vecY)
+
+
+
+res2
+res3
+
+
+B <- 300
+
+matparam <- matrix(NA, ncol = ncol(matX) + 2, nrow = B)
+for(b in 1:B){
+  
+  if(b%%10 == 0) print(b)
+  vecY <- rbinom(n = length(vecN), 
+                 size = vecN,
+                 prob = rbeta(n = length(vecN), 
+                              shape1 = phi * vecMu,
+                              shape2 = phi * ( 1 - vecMu) )
+  )
+  
+  thetaint <- c(rnorm(ncol(matX)+1), rexp(1))
+  tryCatch(
+    {  
+      matparam[b, ] <- optim(thetaint, vrais3, lower = c(rep(-Inf, ncol(matX) + 1), 0), upper = c(rep(Inf, ncol(matX) + 2)), method = "L-BFGS-B",
+                             matExo = matX, vecSize = vecN, vecOutput = vecY)$par
+    },
+    error = function(e){}
+    
+  )
+
+  
+}
+
+
+matparam <- na.omit(matparam)
+save(matparam, file = "matparam.RData")
+apply(matparam, 2, mean)
+apply(matparam, 2, sd)
